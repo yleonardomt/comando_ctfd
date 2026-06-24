@@ -1,0 +1,145 @@
+#!/bin/bash
+
+# Script maestro: Instala CTFd, clona ctf-comando y ejecuta su script.sh
+# Uso: curl -s https://raw.githubusercontent.com/tu-usuario/tu-repo/main/script_maestro.sh | bash
+
+set -e  # Salir si hay error
+
+# Colores
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m'
+
+print_message() { echo -e "${BLUE}[INFO]${NC} $1"; }
+print_success() { echo -e "${GREEN}[SUCCESS]${NC} $1"; }
+print_warning() { echo -e "${YELLOW}[WARNING]${NC} $1"; }
+print_error() { echo -e "${RED}[ERROR]${NC} $1"; }
+
+# --- 1. VERIFICAR E INSTALAR DEPENDENCIAS (Git, Docker, Docker Compose) ---
+print_message "Verificando e instalando dependencias necesarias..."
+
+# Verificar Git
+if ! command -v git &> /dev/null; then
+    print_warning "Git no está instalado. Instalando..."
+    sudo apt-get update && sudo apt-get install -y git
+    print_success "Git instalado correctamente."
+else
+    print_success "Git ya está instalado."
+fi
+
+# Verificar Docker
+if ! command -v docker &> /dev/null; then
+    print_warning "Docker no está instalado. Instalando..."
+    curl -fsSL https://get.docker.com -o get-docker.sh
+    sudo sh get-docker.sh
+    sudo usermod -aG docker $USER
+    print_success "Docker instalado correctamente."
+else
+    print_success "Docker ya está instalado."
+fi
+
+# Verificar Docker Compose
+if ! command -v docker-compose &> /dev/null && ! docker compose version &> /dev/null; then
+    print_warning "Docker Compose no está instalado. Instalando..."
+    sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+    sudo chmod +x /usr/local/bin/docker-compose
+    print_success "Docker Compose instalado correctamente."
+else
+    print_success "Docker Compose ya está instalado."
+fi
+
+# --- 2. LIBERAR PUERTO 80 ---
+print_warning "Verificando si el puerto 80 está ocupado..."
+if sudo lsof -i :80 &> /dev/null; then
+    PID=$(sudo lsof -t -i :80)
+    print_message "El puerto 80 está ocupado por el proceso PID: $PID. Liberándolo..."
+    sudo kill -9 $PID
+    sleep 2
+    print_success "Puerto 80 liberado."
+else
+    print_success "Puerto 80 está libre."
+fi
+
+# --- 3. INSTALAR CTFd CON DOCKER EN PUERTO 80 ---
+print_message "Iniciando instalación de CTFd..."
+
+# Descargar CTFd si no existe
+if [ -d "CTFd" ]; then
+    print_message "El directorio CTFd ya existe. Actualizando..."
+    cd CTFd
+    git pull
+    cd ..
+else
+    print_message "Clonando CTFd desde GitHub..."
+    git clone https://github.com/CTFd/CTFd.git
+    print_success "CTFd clonado correctamente."
+fi
+
+# Configurar el puerto 80 en docker-compose.yml
+cd CTFd
+print_message "Configurando CTFd para usar el puerto 80..."
+if ! grep -q "80:8000" docker-compose.yml; then
+    cp docker-compose.yml docker-compose.yml.bak
+    sed -i 's/- "8000:8000"/- "80:8000"/g' docker-compose.yml
+    print_success "Puerto configurado a 80:8000."
+else
+    print_success "El puerto ya está configurado para 80."
+fi
+
+# Iniciar CTFd
+print_message "Iniciando CTFd con Docker Compose..."
+docker-compose down 2>/dev/null || true
+docker-compose up -d --build
+cd ..
+print_success "CTFd iniciado correctamente en http://localhost:80"
+
+# --- 4. CLONAR REPOSITORIO ctf-comando Y EJECUTAR script.sh ---
+print_message "Clonando el repositorio ctf-comando..."
+if [ -d "ctf-comando" ]; then
+    print_message "El directorio ctf-comando ya existe. Actualizando..."
+    cd ctf-comando
+    git pull
+    cd ..
+else
+    git clone https://github.com/yleonardomt/ctf-comando.git
+    print_success "Repositorio ctf-comando clonado correctamente."
+fi
+
+print_message "Ejecutando script.sh del repositorio ctf-comando..."
+cd ctf-comando
+if [ -f "script.sh" ]; then
+    chmod +x script.sh
+    ./script.sh
+    print_success "script.sh ejecutado correctamente."
+else
+    print_error "No se encontró script.sh en el repositorio ctf-comando."
+    exit 1
+fi
+cd ..
+
+# --- 5. MENSAJE FINAL PARA EL ADMINISTRADOR ---
+echo ""
+print_success "==================== INSTALACIÓN COMPLETADA ===================="
+echo ""
+print_message "🌐 CTFd está corriendo en: http://localhost:80"
+print_message "🔐 Credenciales de administrador: admin@admin.com / admin"
+echo ""
+print_warning "📦 IMPORTANTE PARA EL ADMINISTRADOR:"
+print_message "   Debes subir manualmente el archivo ZIP con los retos."
+print_message "   Ubicación esperada del ZIP en este servidor:"
+print_message "   $(pwd)/ctf-comando/ (busca el archivo .zip)"
+echo ""
+print_message "   Pasos para importar:"
+print_message "   1. Ve a http://localhost:80 y inicia sesión como admin"
+print_message "   2. Entra al panel de administración"
+print_message "   3. Busca la opción 'Importar' o 'Import Backup'"
+print_message "   4. Selecciona el archivo ZIP y súbelo"
+echo ""
+print_message "📌 Comandos útiles para gestionar CTFd:"
+print_message "   - Ver logs: cd CTFd && docker-compose logs -f"
+print_message "   - Detener:  cd CTFd && docker-compose down"
+print_message "   - Iniciar:  cd CTFd && docker-compose up -d"
+echo ""
+print_success "=================================================================="
