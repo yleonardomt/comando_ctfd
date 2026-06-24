@@ -60,17 +60,30 @@ else
 fi
 print_message "Usando comando: '$DC'"
 
-# --- 2. LIBERAR PUERTO 80 ---
+# --- 2. LIBERAR PUERTO 80 (procesos del sistema Y contenedores Docker) ---
 print_warning "Verificando si el puerto 80 está ocupado..."
+
+# Detener contenedores Docker que usen el puerto 80
+CONTAINERS_80=$(docker ps --format '{{.ID}} {{.Ports}}' | grep '0.0.0.0:80->' | awk '{print $1}')
+if [ -n "$CONTAINERS_80" ]; then
+    print_message "Deteniendo contenedores Docker que usan el puerto 80..."
+    echo "$CONTAINERS_80" | xargs docker stop
+    echo "$CONTAINERS_80" | xargs docker rm -f 2>/dev/null || true
+    print_success "Contenedores Docker detenidos."
+fi
+
+# Detener procesos del sistema que usen el puerto 80
 if sudo lsof -i :80 &> /dev/null; then
     PID=$(sudo lsof -t -i :80 | tr '\n' ' ')
-    print_message "El puerto 80 está ocupado por el proceso PID: $PID. Liberándolo..."
-    sudo kill -9 $PID
+    print_message "El puerto 80 está ocupado por PID: $PID. Liberándolo..."
+    sudo kill -9 $PID 2>/dev/null || true
     sleep 2
     print_success "Puerto 80 liberado."
 else
     print_success "Puerto 80 está libre."
 fi
+
+sleep 2  # Esperar a que el puerto quede completamente libre
 
 # --- 3. INSTALAR CTFd CON DOCKER EN PUERTO 80 ---
 print_message "Iniciando instalación de CTFd..."
@@ -89,6 +102,12 @@ fi
 
 # Configurar el puerto 80 en docker-compose.yml
 cd CTFd
+
+# Bajar cualquier instancia previa de CTFd (¡CLAVE para liberar el puerto!)
+print_message "Deteniendo instancia previa de CTFd si existe..."
+$DC down --remove-orphans 2>/dev/null || true
+sleep 2
+
 print_message "Configurando CTFd para usar el puerto 80..."
 if grep -q "80:8000" docker-compose.yml; then
     print_success "El puerto ya está configurado para 80."
@@ -100,7 +119,6 @@ fi
 
 # Iniciar CTFd
 print_message "Iniciando CTFd con Docker Compose..."
-$DC down 2>/dev/null || true
 $DC up -d --build
 cd ..
 print_success "CTFd iniciado correctamente en http://localhost:80"
