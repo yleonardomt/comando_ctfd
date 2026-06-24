@@ -9,15 +9,20 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 CYAN='\033[0;36m'
-MAGENTA='\033[0;35m'
+MAGENTA='\033[1;35m'
 BOLD='\033[1m'
-BLINK='\033[5m'
 NC='\033[0m'
 
 print_message() { echo -e "${BLUE}[INFO]${NC} $1"; }
 print_success() { echo -e "${GREEN}[SUCCESS]${NC} $1"; }
 print_warning() { echo -e "${YELLOW}[WARNING]${NC} $1"; }
 print_error()   { echo -e "${RED}[ERROR]${NC} $1"; }
+
+# URL base del repositorio donde está el ZIP
+REPO_RAW="https://raw.githubusercontent.com/yleonardomt/comando_ctfd/main"
+REPO_API="https://api.github.com/repos/yleonardomt/comando_ctfd/contents"
+ZIP_FILENAME="Comando.2026-06-24_22_02_06.zip"
+ZIP_DEST="$HOME/ctfd_backup.zip"
 
 # --- 1. VERIFICAR E INSTALAR DEPENDENCIAS ---
 print_message "Verificando e instalando dependencias necesarias..."
@@ -59,7 +64,27 @@ else
 fi
 print_message "Usando comando: '$DC'"
 
-# --- 2. LIMPIEZA TOTAL DE DOCKER ---
+# --- 2. DESCARGAR EL ZIP DESDE EL REPOSITORIO ---
+print_message "Descargando archivo ZIP de retos desde GitHub..."
+
+# Buscar el ZIP dinámicamente via API de GitHub
+ZIP_URL=$(curl -s "$REPO_API" | grep -o '"download_url":"[^"]*\.zip"' | head -1 | cut -d'"' -f4)
+
+if [ -z "$ZIP_URL" ]; then
+    # Fallback: usar nombre fijo conocido
+    ZIP_URL="https://github.com/yleonardomt/comando_ctfd/raw/main/$ZIP_FILENAME"
+fi
+
+print_message "URL del ZIP: $ZIP_URL"
+curl -L "$ZIP_URL" -o "$ZIP_DEST"
+
+if [ -f "$ZIP_DEST" ]; then
+    print_success "ZIP descargado en: $ZIP_DEST"
+else
+    print_error "No se pudo descargar el ZIP."
+fi
+
+# --- 3. LIMPIEZA TOTAL DE DOCKER ---
 print_warning "Realizando limpieza total de Docker..."
 
 RUNNING=$(docker ps -q)
@@ -90,7 +115,7 @@ fi
 print_success "Puerto 80 completamente libre."
 sleep 2
 
-# --- 3. INSTALAR CTFd CON DOCKER EN PUERTO 80 ---
+# --- 4. INSTALAR CTFd CON DOCKER EN PUERTO 80 ---
 print_message "Iniciando instalación de CTFd..."
 
 if [ -d "CTFd" ]; then
@@ -120,7 +145,7 @@ $DC up -d --build
 print_success "CTFd iniciado correctamente en http://localhost:80"
 cd ..
 
-# --- 4. CLONAR REPOSITORIO ctf-comando Y EJECUTAR script.sh ---
+# --- 5. CLONAR REPOSITORIO ctf-comando Y EJECUTAR script.sh ---
 print_message "Clonando el repositorio ctf-comando..."
 if [ -d "ctf-comando" ]; then
     print_message "El directorio ctf-comando ya existe. Actualizando..."
@@ -144,53 +169,38 @@ else
 fi
 cd ..
 
-# Buscar el ZIP en ctf-comando
-ZIP_PATH=$(find "$(pwd)/ctf-comando" -maxdepth 1 -name "*.zip" | head -1)
-
-# --- 5. MENSAJE FINAL ---
+# --- 6. MENSAJE FINAL ---
 echo ""
 echo -e "${GREEN}${BOLD}=================================================================="
-echo -e "          ✅  INSTALACIÓN COMPLETADA EXITOSAMENTE  ✅"
+echo -e "       ✅  INSTALACIÓN COMPLETADA EXITOSAMENTE  ✅"
 echo -e "==================================================================${NC}"
 echo ""
 echo -e "${CYAN}${BOLD}  🌐  CTFd corriendo en:  http://localhost:80${NC}"
 echo -e "${CYAN}${BOLD}  🔐  Admin:  admin@admin.com  /  admin${NC}"
 echo ""
-
-# ===== BLOQUE LLAMATIVO DEL ZIP =====
 echo -e "${YELLOW}${BOLD}╔══════════════════════════════════════════════════════════════╗"
 echo -e "║                                                              ║"
 echo -e "║   ⚠️   ACCIÓN REQUERIDA POR EL ADMINISTRADOR   ⚠️            ║"
 echo -e "║                                                              ║"
 echo -e "╠══════════════════════════════════════════════════════════════╣"
 echo -e "║                                                              ║"
-echo -e "║   📦  DEBES SUBIR EL ARCHIVO ZIP CON LOS RETOS A CTFd      ║"
+echo -e "║   📦  EL ZIP YA FUE DESCARGADO AQUÍ:                        ║"
 echo -e "║                                                              ║"
-
-if [ -n "$ZIP_PATH" ]; then
-echo -e "║   📁  UBICACIÓN DEL ZIP:                                     ║"
+echo -e "║   ${MAGENTA}➡️   $ZIP_DEST${YELLOW}${BOLD}"
 echo -e "║                                                              ║"
-echo -e "║   ${MAGENTA}${BOLD}➡️   $ZIP_PATH${YELLOW}${BOLD}"
-echo -e "║                                                              ║"
-else
-echo -e "║   📁  ZIP esperado en:                                       ║"
-echo -e "║   ➡️   $(pwd)/ctf-comando/*.zip                              ║"
-echo -e "║                                                              ║"
-fi
-
 echo -e "╠══════════════════════════════════════════════════════════════╣"
 echo -e "║                                                              ║"
-echo -e "║   PASOS PARA IMPORTAR:                                       ║"
+echo -e "║   PASOS PARA IMPORTAR EN CTFd:                               ║"
 echo -e "║                                                              ║"
-echo -e "║   1️⃣   Abre  →  http://localhost:80                          ║"
+echo -e "║   1️⃣   Abre navegador  →  http://localhost:80                ║"
 echo -e "║   2️⃣   Inicia sesión como admin                              ║"
-echo -e "║   3️⃣   Ve al panel de administración                         ║"
+echo -e "║   3️⃣   Ve al panel de administración (Admin Panel)           ║"
 echo -e "║   4️⃣   Busca  →  'Import' o 'Import Backup'                  ║"
-echo -e "║   5️⃣   Selecciona el archivo ZIP y súbelo                    ║"
+echo -e "║   5️⃣   Sube el archivo:                                      ║"
+echo -e "║       ${MAGENTA}$ZIP_DEST${YELLOW}${BOLD}   ║"
 echo -e "║                                                              ║"
 echo -e "╚══════════════════════════════════════════════════════════════╝${NC}"
 echo ""
-
 echo -e "${BLUE}${BOLD}📌 Comandos útiles:${NC}"
 echo -e "   Ver logs  →  cd CTFd && $DC logs -f"
 echo -e "   Detener   →  cd CTFd && $DC down"
