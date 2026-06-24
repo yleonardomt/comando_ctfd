@@ -8,6 +8,10 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+MAGENTA='\033[0;35m'
+BOLD='\033[1m'
+BLINK='\033[5m'
 NC='\033[0m'
 
 print_message() { echo -e "${BLUE}[INFO]${NC} $1"; }
@@ -58,7 +62,6 @@ print_message "Usando comando: '$DC'"
 # --- 2. LIMPIEZA TOTAL DE DOCKER ---
 print_warning "Realizando limpieza total de Docker..."
 
-# Parar todos los contenedores corriendo
 RUNNING=$(docker ps -q)
 if [ -n "$RUNNING" ]; then
     print_message "Parando todos los contenedores activos..."
@@ -66,7 +69,6 @@ if [ -n "$RUNNING" ]; then
     print_success "Contenedores parados."
 fi
 
-# Eliminar todos los contenedores (activos y parados)
 ALL=$(docker ps -aq)
 if [ -n "$ALL" ]; then
     print_message "Eliminando todos los contenedores..."
@@ -74,12 +76,10 @@ if [ -n "$ALL" ]; then
     print_success "Contenedores eliminados."
 fi
 
-# Eliminar redes no usadas (libera puertos atrapados)
 print_message "Eliminando redes Docker no usadas..."
 docker network prune -f
 print_success "Redes eliminadas."
 
-# Matar cualquier proceso del sistema en puerto 80
 if sudo lsof -i :80 &> /dev/null; then
     PID=$(sudo lsof -t -i :80 | tr '\n' ' ')
     print_message "Proceso del sistema en puerto 80 (PID: $PID), eliminando..."
@@ -144,27 +144,56 @@ else
 fi
 cd ..
 
+# Buscar el ZIP en ctf-comando
+ZIP_PATH=$(find "$(pwd)/ctf-comando" -maxdepth 1 -name "*.zip" | head -1)
+
 # --- 5. MENSAJE FINAL ---
 echo ""
-print_success "==================== INSTALACIÓN COMPLETADA ===================="
+echo -e "${GREEN}${BOLD}=================================================================="
+echo -e "          ✅  INSTALACIÓN COMPLETADA EXITOSAMENTE  ✅"
+echo -e "==================================================================${NC}"
 echo ""
-print_message "🌐 CTFd está corriendo en: http://localhost:80"
-print_message "🔐 Credenciales de administrador: admin@admin.com / admin"
+echo -e "${CYAN}${BOLD}  🌐  CTFd corriendo en:  http://localhost:80${NC}"
+echo -e "${CYAN}${BOLD}  🔐  Admin:  admin@admin.com  /  admin${NC}"
 echo ""
-print_warning "📦 IMPORTANTE PARA EL ADMINISTRADOR:"
-print_message "   Debes subir manualmente el archivo ZIP con los retos."
-print_message "   Ubicación esperada del ZIP en este servidor:"
-print_message "   $(pwd)/ctf-comando/ (busca el archivo .zip)"
+
+# ===== BLOQUE LLAMATIVO DEL ZIP =====
+echo -e "${YELLOW}${BOLD}╔══════════════════════════════════════════════════════════════╗"
+echo -e "║                                                              ║"
+echo -e "║   ⚠️   ACCIÓN REQUERIDA POR EL ADMINISTRADOR   ⚠️            ║"
+echo -e "║                                                              ║"
+echo -e "╠══════════════════════════════════════════════════════════════╣"
+echo -e "║                                                              ║"
+echo -e "║   📦  DEBES SUBIR EL ARCHIVO ZIP CON LOS RETOS A CTFd      ║"
+echo -e "║                                                              ║"
+
+if [ -n "$ZIP_PATH" ]; then
+echo -e "║   📁  UBICACIÓN DEL ZIP:                                     ║"
+echo -e "║                                                              ║"
+echo -e "║   ${MAGENTA}${BOLD}➡️   $ZIP_PATH${YELLOW}${BOLD}"
+echo -e "║                                                              ║"
+else
+echo -e "║   📁  ZIP esperado en:                                       ║"
+echo -e "║   ➡️   $(pwd)/ctf-comando/*.zip                              ║"
+echo -e "║                                                              ║"
+fi
+
+echo -e "╠══════════════════════════════════════════════════════════════╣"
+echo -e "║                                                              ║"
+echo -e "║   PASOS PARA IMPORTAR:                                       ║"
+echo -e "║                                                              ║"
+echo -e "║   1️⃣   Abre  →  http://localhost:80                          ║"
+echo -e "║   2️⃣   Inicia sesión como admin                              ║"
+echo -e "║   3️⃣   Ve al panel de administración                         ║"
+echo -e "║   4️⃣   Busca  →  'Import' o 'Import Backup'                  ║"
+echo -e "║   5️⃣   Selecciona el archivo ZIP y súbelo                    ║"
+echo -e "║                                                              ║"
+echo -e "╚══════════════════════════════════════════════════════════════╝${NC}"
 echo ""
-print_message "   Pasos para importar:"
-print_message "   1. Ve a http://localhost:80 y inicia sesión como admin"
-print_message "   2. Entra al panel de administración"
-print_message "   3. Busca la opción 'Importar' o 'Import Backup'"
-print_message "   4. Selecciona el archivo ZIP y súbelo"
+
+echo -e "${BLUE}${BOLD}📌 Comandos útiles:${NC}"
+echo -e "   Ver logs  →  cd CTFd && $DC logs -f"
+echo -e "   Detener   →  cd CTFd && $DC down"
+echo -e "   Iniciar   →  cd CTFd && $DC up -d"
 echo ""
-print_message "📌 Comandos útiles para gestionar CTFd:"
-print_message "   - Ver logs: cd CTFd && $DC logs -f"
-print_message "   - Detener:  cd CTFd && $DC down"
-print_message "   - Iniciar:  cd CTFd && $DC up -d"
-echo ""
-print_success "=================================================================="
+echo -e "${GREEN}${BOLD}==================================================================${NC}"
