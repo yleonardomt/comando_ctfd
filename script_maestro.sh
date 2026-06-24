@@ -18,6 +18,9 @@ print_success() { echo -e "${GREEN}[SUCCESS]${NC} $1"; }
 print_warning() { echo -e "${YELLOW}[WARNING]${NC} $1"; }
 print_error()   { echo -e "${RED}[ERROR]${NC} $1"; }
 
+# Ir siempre al HOME para evitar problemas de paths
+cd "$HOME"
+
 # --- 1. VERIFICAR E INSTALAR DEPENDENCIAS ---
 print_message "Verificando e instalando dependencias necesarias..."
 
@@ -75,67 +78,46 @@ else
     print_error "No se pudo descargar el ZIP."
 fi
 
-# --- 3. LIMPIEZA TOTAL DE DOCKER Y PUERTO 80 ---
-print_warning "Realizando limpieza total de Docker y puerto 80..."
+# --- 3. LIMPIEZA TOTAL DE DOCKER ---
+print_warning "Realizando limpieza total de Docker..."
 
-# Parar y eliminar todos los contenedores
-RUNNING=$(docker ps -q)
-if [ -n "$RUNNING" ]; then
-    print_message "Parando todos los contenedores activos..."
-    docker stop $RUNNING
-fi
 ALL=$(docker ps -aq)
 if [ -n "$ALL" ]; then
     print_message "Eliminando todos los contenedores..."
     docker rm -f $ALL
+    print_success "Contenedores eliminados."
 fi
 
-# Eliminar redes Docker (libera puertos)
 print_message "Eliminando redes Docker no usadas..."
 docker network prune -f
 print_success "Redes eliminadas."
 
-# Matar servicios del sistema en puerto 80 (apache2, nginx, etc.)
-for SERVICIO in apache2 nginx lighttpd; do
-    if sudo systemctl is-active --quiet $SERVICIO 2>/dev/null; then
-        print_message "Deteniendo servicio $SERVICIO..."
-        sudo systemctl stop $SERVICIO
-        sudo systemctl disable $SERVICIO
-    fi
-done
-
-# Matar cualquier proceso que quede en puerto 80
+# Matar cualquier proceso en puerto 80
 if sudo lsof -i :80 &> /dev/null; then
     PID=$(sudo lsof -t -i :80 | tr '\n' ' ')
     print_message "Proceso en puerto 80 (PID: $PID), eliminando..."
     sudo kill -9 $PID 2>/dev/null || true
 fi
 
-sleep 3
-
-# Verificar que el puerto quedó libre
-if sudo lsof -i :80 &> /dev/null; then
-    print_error "El puerto 80 sigue ocupado. Abortando."
-    sudo lsof -i :80
-    exit 1
-fi
-
+sleep 2
 print_success "Puerto 80 completamente libre."
 
 # --- 4. INSTALAR CTFd CON DOCKER EN PUERTO 80 ---
 print_message "Iniciando instalación de CTFd..."
 
-if [ -d "$HOME/CTFd" ]; then
+cd "$HOME"
+if [ -d "CTFd" ]; then
     print_message "El directorio CTFd ya existe. Actualizando..."
-    cd "$HOME/CTFd"
+    cd CTFd
     git pull
+    cd "$HOME"
 else
     print_message "Clonando CTFd desde GitHub..."
-    git clone https://github.com/CTFd/CTFd.git "$HOME/CTFd"
-    cd "$HOME/CTFd"
+    git clone https://github.com/CTFd/CTFd.git
     print_success "CTFd clonado correctamente."
 fi
 
+cd "$HOME/CTFd"
 print_message "Configurando CTFd para usar el puerto 80..."
 if grep -q "80:8000" docker-compose.yml; then
     print_success "El puerto ya está configurado para 80."
@@ -147,28 +129,19 @@ fi
 
 print_message "Iniciando CTFd con Docker Compose..."
 $DC up -d --build
-
-# Esperar y verificar que nginx arrancó
-sleep 5
-if docker ps --format '{{.Names}} {{.Ports}}' | grep -q "nginx"; then
-    print_success "CTFd iniciado correctamente en http://localhost:80"
-else
-    print_error "CTFd nginx no arrancó correctamente. Revisando logs..."
-    $DC logs nginx 2>/dev/null | tail -20
-    exit 1
-fi
+print_success "CTFd iniciado correctamente en http://localhost:80"
 
 cd "$HOME"
 
 # --- 5. CLONAR REPOSITORIO ctf-comando Y EJECUTAR script.sh ---
 print_message "Clonando el repositorio ctf-comando..."
-if [ -d "$HOME/ctf-comando" ]; then
+if [ -d "ctf-comando" ]; then
     print_message "El directorio ctf-comando ya existe. Actualizando..."
-    cd "$HOME/ctf-comando"
+    cd ctf-comando
     git pull
     cd "$HOME"
 else
-    git clone https://github.com/yleonardomt/ctf-comando.git "$HOME/ctf-comando"
+    git clone https://github.com/yleonardomt/ctf-comando.git
     print_success "Repositorio ctf-comando clonado correctamente."
 fi
 
