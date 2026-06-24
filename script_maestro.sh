@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Script maestro: Instala CTFd, clona ctf-comando y ejecuta su script.sh
-# Uso: curl -s https://raw.githubusercontent.com/tu-usuario/tu-repo/main/script_maestro.sh | bash
+# Uso: curl -s https://raw.githubusercontent.com/yleonardomt/comando_ctfd/main/script_maestro.sh | bash
 
 set -e  # Salir si hay error
 
@@ -15,7 +15,7 @@ NC='\033[0m'
 print_message() { echo -e "${BLUE}[INFO]${NC} $1"; }
 print_success() { echo -e "${GREEN}[SUCCESS]${NC} $1"; }
 print_warning() { echo -e "${YELLOW}[WARNING]${NC} $1"; }
-print_error() { echo -e "${RED}[ERROR]${NC} $1"; }
+print_error()   { echo -e "${RED}[ERROR]${NC} $1"; }
 
 # --- 1. VERIFICAR E INSTALAR DEPENDENCIAS (Git, Docker, Docker Compose) ---
 print_message "Verificando e instalando dependencias necesarias..."
@@ -34,26 +34,36 @@ if ! command -v docker &> /dev/null; then
     print_warning "Docker no está instalado. Instalando..."
     curl -fsSL https://get.docker.com -o get-docker.sh
     sudo sh get-docker.sh
-    sudo usermod -aG docker $USER
+    sudo usermod -aG docker "$USER"
+    rm -f get-docker.sh
     print_success "Docker instalado correctamente."
 else
     print_success "Docker ya está instalado."
 fi
 
-# Verificar Docker Compose
-if ! command -v docker-compose &> /dev/null && ! docker compose version &> /dev/null; then
+# Verificar Docker Compose e instalar si no existe
+if ! command -v docker-compose &> /dev/null && ! docker compose version &> /dev/null 2>&1; then
     print_warning "Docker Compose no está instalado. Instalando..."
-    sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+    sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" \
+        -o /usr/local/bin/docker-compose
     sudo chmod +x /usr/local/bin/docker-compose
     print_success "Docker Compose instalado correctamente."
 else
     print_success "Docker Compose ya está instalado."
 fi
 
+# Detectar el comando correcto de Docker Compose
+if command -v docker-compose &> /dev/null; then
+    DC="docker-compose"
+else
+    DC="docker compose"
+fi
+print_message "Usando comando: '$DC'"
+
 # --- 2. LIBERAR PUERTO 80 ---
 print_warning "Verificando si el puerto 80 está ocupado..."
 if sudo lsof -i :80 &> /dev/null; then
-    PID=$(sudo lsof -t -i :80)
+    PID=$(sudo lsof -t -i :80 | tr '\n' ' ')
     print_message "El puerto 80 está ocupado por el proceso PID: $PID. Liberándolo..."
     sudo kill -9 $PID
     sleep 2
@@ -80,18 +90,18 @@ fi
 # Configurar el puerto 80 en docker-compose.yml
 cd CTFd
 print_message "Configurando CTFd para usar el puerto 80..."
-if ! grep -q "80:8000" docker-compose.yml; then
+if grep -q "80:8000" docker-compose.yml; then
+    print_success "El puerto ya está configurado para 80."
+else
     cp docker-compose.yml docker-compose.yml.bak
     sed -i 's/- "8000:8000"/- "80:8000"/g' docker-compose.yml
     print_success "Puerto configurado a 80:8000."
-else
-    print_success "El puerto ya está configurado para 80."
 fi
 
 # Iniciar CTFd
 print_message "Iniciando CTFd con Docker Compose..."
-docker-compose down 2>/dev/null || true
-docker-compose up -d --build
+$DC down 2>/dev/null || true
+$DC up -d --build
 cd ..
 print_success "CTFd iniciado correctamente en http://localhost:80"
 
@@ -138,8 +148,8 @@ print_message "   3. Busca la opción 'Importar' o 'Import Backup'"
 print_message "   4. Selecciona el archivo ZIP y súbelo"
 echo ""
 print_message "📌 Comandos útiles para gestionar CTFd:"
-print_message "   - Ver logs: cd CTFd && docker-compose logs -f"
-print_message "   - Detener:  cd CTFd && docker-compose down"
-print_message "   - Iniciar:  cd CTFd && docker-compose up -d"
+print_message "   - Ver logs: cd CTFd && $DC logs -f"
+print_message "   - Detener:  cd CTFd && $DC down"
+print_message "   - Iniciar:  cd CTFd && $DC up -d"
 echo ""
 print_success "=================================================================="
