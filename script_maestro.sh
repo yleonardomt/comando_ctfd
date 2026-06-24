@@ -3,8 +3,6 @@
 # Script maestro: Instala CTFd, clona ctf-comando y ejecuta su script.sh
 # Uso: curl -s https://raw.githubusercontent.com/yleonardomt/comando_ctfd/main/script_maestro.sh | bash
 
-set -e  # Salir si hay error
-
 # Colores
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -17,10 +15,9 @@ print_success() { echo -e "${GREEN}[SUCCESS]${NC} $1"; }
 print_warning() { echo -e "${YELLOW}[WARNING]${NC} $1"; }
 print_error()   { echo -e "${RED}[ERROR]${NC} $1"; }
 
-# --- 1. VERIFICAR E INSTALAR DEPENDENCIAS (Git, Docker, Docker Compose) ---
+# --- 1. VERIFICAR E INSTALAR DEPENDENCIAS ---
 print_message "Verificando e instalando dependencias necesarias..."
 
-# Verificar Git
 if ! command -v git &> /dev/null; then
     print_warning "Git no está instalado. Instalando..."
     sudo apt-get update && sudo apt-get install -y git
@@ -29,7 +26,6 @@ else
     print_success "Git ya está instalado."
 fi
 
-# Verificar Docker
 if ! command -v docker &> /dev/null; then
     print_warning "Docker no está instalado. Instalando..."
     curl -fsSL https://get.docker.com -o get-docker.sh
@@ -41,7 +37,6 @@ else
     print_success "Docker ya está instalado."
 fi
 
-# Verificar Docker Compose e instalar si no existe
 if ! command -v docker-compose &> /dev/null && ! docker compose version &> /dev/null 2>&1; then
     print_warning "Docker Compose no está instalado. Instalando..."
     sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" \
@@ -60,35 +55,44 @@ else
 fi
 print_message "Usando comando: '$DC'"
 
-# --- 2. LIBERAR PUERTO 80 (procesos del sistema Y contenedores Docker) ---
-print_warning "Verificando si el puerto 80 está ocupado..."
+# --- 2. LIMPIEZA TOTAL DE DOCKER ---
+print_warning "Realizando limpieza total de Docker..."
 
-# Detener contenedores Docker que usen el puerto 80
-CONTAINERS_80=$(docker ps --format '{{.ID}} {{.Ports}}' | grep '0.0.0.0:80->' | awk '{print $1}')
-if [ -n "$CONTAINERS_80" ]; then
-    print_message "Deteniendo contenedores Docker que usan el puerto 80..."
-    echo "$CONTAINERS_80" | xargs docker stop
-    echo "$CONTAINERS_80" | xargs docker rm -f 2>/dev/null || true
-    print_success "Contenedores Docker detenidos."
+# Parar todos los contenedores corriendo
+RUNNING=$(docker ps -q)
+if [ -n "$RUNNING" ]; then
+    print_message "Parando todos los contenedores activos..."
+    docker stop $RUNNING
+    print_success "Contenedores parados."
 fi
 
-# Detener procesos del sistema que usen el puerto 80
+# Eliminar todos los contenedores (activos y parados)
+ALL=$(docker ps -aq)
+if [ -n "$ALL" ]; then
+    print_message "Eliminando todos los contenedores..."
+    docker rm -f $ALL
+    print_success "Contenedores eliminados."
+fi
+
+# Eliminar redes no usadas (libera puertos atrapados)
+print_message "Eliminando redes Docker no usadas..."
+docker network prune -f
+print_success "Redes eliminadas."
+
+# Matar cualquier proceso del sistema en puerto 80
 if sudo lsof -i :80 &> /dev/null; then
     PID=$(sudo lsof -t -i :80 | tr '\n' ' ')
-    print_message "El puerto 80 está ocupado por PID: $PID. Liberándolo..."
+    print_message "Proceso del sistema en puerto 80 (PID: $PID), eliminando..."
     sudo kill -9 $PID 2>/dev/null || true
-    sleep 2
-    print_success "Puerto 80 liberado."
-else
-    print_success "Puerto 80 está libre."
+    sleep 1
 fi
 
-sleep 2  # Esperar a que el puerto quede completamente libre
+print_success "Puerto 80 completamente libre."
+sleep 2
 
 # --- 3. INSTALAR CTFd CON DOCKER EN PUERTO 80 ---
 print_message "Iniciando instalación de CTFd..."
 
-# Descargar CTFd si no existe
 if [ -d "CTFd" ]; then
     print_message "El directorio CTFd ya existe. Actualizando..."
     cd CTFd
@@ -100,13 +104,7 @@ else
     print_success "CTFd clonado correctamente."
 fi
 
-# Configurar el puerto 80 en docker-compose.yml
 cd CTFd
-
-# Bajar cualquier instancia previa de CTFd (¡CLAVE para liberar el puerto!)
-print_message "Deteniendo instancia previa de CTFd si existe..."
-$DC down --remove-orphans 2>/dev/null || true
-sleep 2
 
 print_message "Configurando CTFd para usar el puerto 80..."
 if grep -q "80:8000" docker-compose.yml; then
@@ -117,11 +115,10 @@ else
     print_success "Puerto configurado a 80:8000."
 fi
 
-# Iniciar CTFd
 print_message "Iniciando CTFd con Docker Compose..."
 $DC up -d --build
-cd ..
 print_success "CTFd iniciado correctamente en http://localhost:80"
+cd ..
 
 # --- 4. CLONAR REPOSITORIO ctf-comando Y EJECUTAR script.sh ---
 print_message "Clonando el repositorio ctf-comando..."
@@ -147,7 +144,7 @@ else
 fi
 cd ..
 
-# --- 5. MENSAJE FINAL PARA EL ADMINISTRADOR ---
+# --- 5. MENSAJE FINAL ---
 echo ""
 print_success "==================== INSTALACIÓN COMPLETADA ===================="
 echo ""
